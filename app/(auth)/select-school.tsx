@@ -45,7 +45,7 @@ export default function SelectSchool() {
       const response = await api.get('/schools/search', {
         params: { q: search }
       });
-      setSchools(response.data.data || response.data || []);
+      setSchools((response as any) || []);
     } catch (error) {
       console.error('Search failed', error);
       // Fallback for demo if backend is not running

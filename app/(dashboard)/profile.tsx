@@ -8,12 +8,13 @@ import {
   ActivityIndicator, 
   Image,
   StatusBar,
+  RefreshControl,
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { 
-  ArrowLeft, 
+  ArrowLeft,
   User, 
   Mail, 
   Phone, 
@@ -25,33 +26,75 @@ import {
   ShieldCheck, 
   Clock,
   ChevronRight,
-  GraduationCap
+  GraduationCap,
+  TrendingUp,
+  Activity,
+  Users as UsersIcon,
+  RefreshCw
 } from 'lucide-react-native';
+import Svg, { Circle, Rect, G } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../utils/api';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import ProfileAvatar from '../../components/ProfileAvatar';
 import BottomNav from '../../components/BottomNav';
 import { clearAuth } from '../../utils/auth';
+import { apiCache } from '../../utils/cache';
 
 export default function Profile() {
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
     fetchProfile();
+    loadUserData();
   }, []);
 
-  const fetchProfile = async () => {
+  const loadUserData = async () => {
+    const { getUser } = await import('../../utils/auth');
+    const data = await getUser();
+    setUserData(data);
+  };
+
+  const fetchProfile = async (force = false, retryCount = 0) => {
+    // 1. Always try to load from cache first for instant UI
+    const cached = apiCache.get('student_profile');
+    if (cached && !profileData) {
+      setProfileData({ student: cached });
+      if (!force) setLoading(false);
+    }
+
     try {
-      const response = await api.get('/students/profile');
-      setProfileData(response.data.data);
-    } catch (error) {
-      console.error('Failed to fetch profile', error);
+      const response: any = await api.get('/students/profile');
+      if (response && response.student) {
+        setProfileData(response);
+        apiCache.set('student_profile', response.student);
+      }
+    } catch (error: any) {
+      console.error(`Profile fetch failed (attempt ${retryCount + 1})`, error);
+      
+      // Auto-retry once if it's a network error
+      if (retryCount < 1) {
+        setTimeout(() => fetchProfile(force, retryCount + 1), 1000);
+        return;
+      }
+
+      // If we have no data at all and all retries fail, show alert
+      if (!profileData && !cached) {
+         Alert.alert('Connection Error', 'Could not load profile. Please check your internet.');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchProfile(true);
   };
 
   const handleLogout = () => {
@@ -70,13 +113,17 @@ export default function Profile() {
               console.error('Logout failed on server', error);
             } finally {
               await clearAuth();
-              router.replace('/(auth)/select-school');
+              router.replace('/(auth)/login');
             }
           }
         },
       ],
       { cancelable: true }
     );
+  };
+
+  const handleSwitchProfile = () => {
+    router.push('/(dashboard)/switch-profile');
   };
 
   const student = profileData?.student;
@@ -89,6 +136,20 @@ export default function Profile() {
       </View>
     );
   }
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Not Provided';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch (e) {
+      return dateString;
+    }
+  };
 
   const InfoRow = ({ icon: Icon, label, value }: any) => (
     <View style={styles.infoRow}>
@@ -126,19 +187,35 @@ export default function Profile() {
               />
             </View>
             <Text style={styles.studentName}>{student?.name}</Text>
-            <Text style={styles.studentId}>Admission ID: {student?.admission_number}</Text>
+            <Text style={styles.studentId}>Adm Number: {student?.admission_number}</Text>
+            
+            {userData?.is_parent_login && (
+              <TouchableOpacity 
+                style={styles.switchButton}
+                onPress={handleSwitchProfile}
+              >
+                <RefreshCw size={14} color="#fff" strokeWidth={2.5} />
+                <Text style={styles.switchButtonText}>Switch Profile</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </SafeAreaView>
       </LinearGradient>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4f46e5" />
+        }
+      >
         <Animated.View entering={FadeInUp.delay(200)}>
           {/* Academic Info */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Academic Information</Text>
             <View style={styles.card}>
-              <InfoRow icon={GraduationCap} label="Current Class" value={`${student?.current_record?.school_class?.grade?.name || 'N/A'} - ${student?.current_record?.section?.name || 'N/A'}`} />
-              <InfoRow icon={Calendar} label="Admission Date" value={student?.admission_date} title={student?.admission_date}/>
+              <InfoRow icon={GraduationCap} label="Current Class" value={`${student?.current_record?.school_class?.grade?.name || 'N/A'} - ${student?.current_record?.school_class?.section?.name || 'N/A'}`} />
+              <InfoRow icon={Calendar} label="Admission Date" value={formatDate(student?.admission_date)} />
               <InfoRow icon={ShieldCheck} label="Academic Session" value={student?.school?.current_session} />
             </View>
           </View>
@@ -149,7 +226,7 @@ export default function Profile() {
             <View style={styles.card}>
               <InfoRow icon={Mail} label="Email Address" value={student?.email} />
               <InfoRow icon={Phone} label="Phone Number" value={student?.phone} />
-              <InfoRow icon={Calendar} label="Date of Birth" value={student?.date_of_birth} />
+              <InfoRow icon={Calendar} label="Date of Birth" value={formatDate(student?.date_of_birth)} />
               <InfoRow icon={User} label="Gender" value={student?.gender?.toUpperCase()} />
               <InfoRow icon={MapPin} label="Residential Address" value={student?.address} />
             </View>
@@ -160,8 +237,10 @@ export default function Profile() {
             <Text style={styles.sectionTitle}>Parent / Guardian Details</Text>
             <View style={styles.card}>
               <InfoRow icon={Users} label="Parent Name" value={student?.parent_name} />
+              <InfoRow icon={Mail} label="Parent Email" value={student?.parent_email} />
               <InfoRow icon={Phone} label="Parent Phone" value={student?.parent_phone} />
               <InfoRow icon={Briefcase} label="Parent Occupation" value={student?.parent_occupation} />
+              <InfoRow icon={MapPin} label="Home Address" value={student?.address} />
             </View>
           </View>
 
@@ -244,6 +323,23 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
     marginTop: 4,
     fontFamily: 'Inter_400Regular',
+  },
+  switchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  switchButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   content: {
     flex: 1,

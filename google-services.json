@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "672314055054",
+    "project_id": "gradox-9c24a",
+    "storage_bucket": "gradox-9c24a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:672314055054:android:eb9d62c9bc83af332e6cdf",
+        "android_client_info": {
+          "package_name": "com.tenextservicesllp.gradox"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA82rcmatotFojwcxuK-LauS_0JP4if7As"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:672314055054:android:eb9d62c9bc83af332e6ce",
+        "android_client_info": {
+          "package_name": "com.tenextservicesllp.gradox.parent"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA82rcmatotFojwcxuK-LauS_0JP4if7As"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

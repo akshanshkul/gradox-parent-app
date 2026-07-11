@@ -33,26 +33,6 @@ export default function Index() {
     return <Redirect href="/(dashboard)" />;
   }
 
-  if (!hasCompletedWelcome) {
-    return <Redirect href="/welcome1" />;
-  }
-
-  // If Single School Mode, go straight to login with pre-configured params
-  if (!APP_CONFIG.isGlobalApp) {
-    return (
-      <Redirect 
-        href={{
-          pathname: "/(auth)/login",
-          params: { 
-            schoolId: APP_CONFIG.defaultSchool.id,
-            schoolSlug: APP_CONFIG.defaultSchool.slug,
-            schoolName: APP_CONFIG.defaultSchool.name,
-            logoPath: APP_CONFIG.defaultSchool.logo
-          }
-        }} 
-      />
-    );
-  }
-
-  return <Redirect href="/select-school" />;
+  // Parents always go to the main login screen
+  return <Redirect href="/(auth)/login" />;
 }

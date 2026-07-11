@@ -11,13 +11,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, BookOpen, GraduationCap, Clock } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, GraduationCap, Clock, ChevronRight, FileText } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../utils/api';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import BottomNav from '../../components/BottomNav';
 import { clearAuth } from '../../utils/auth';
 import { Alert } from 'react-native';
+import { apiCache } from '../../utils/cache';
 
 export default function Subjects() {
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -25,10 +26,32 @@ export default function Subjects() {
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
-  const fetchSubjects = async () => {
+  const fetchSubjects = async (force = false) => {
+    const cacheKey = 'student_subjects';
+    
+    // 1. Check Cache
+    const cached = force ? null : apiCache.get(cacheKey);
+    if (cached) {
+      console.log('📦 [Cache Hit] student_subjects');
+      setSubjects(cached);
+      setLoading(false);
+      return;
+    }
+
     try {
-      const response = await api.get('/students/subjects');
-      setSubjects(response.data.data || []);
+      // 2. Fetch Fresh.
+      // Backend now returns `{ subjects, session, class }` instead of a
+      // bare array. We still tolerate the old shape for clients
+      // pointing at an older deploy.
+      const raw: any = await api.get('/students/subjects');
+      const data = raw?.data ?? raw;
+      const list = Array.isArray(data)
+        ? data
+        : (Array.isArray(data?.subjects) ? data.subjects : []);
+      setSubjects(list);
+
+      // 3. Save Cache (full payload so refreshes don't lose session/class)
+      apiCache.set(cacheKey, raw);
     } catch (error) {
       console.error('Failed to fetch subjects', error);
     } finally {
@@ -43,7 +66,7 @@ export default function Subjects() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchSubjects();
+    fetchSubjects(true); // Force fresh fetch on pull-to-refresh
   };
 
   const handleLogout = () => {
@@ -111,30 +134,77 @@ export default function Subjects() {
         }
       >
         <Animated.View entering={FadeInUp.delay(200)} style={styles.listContainer}>
-          {subjects.map((item, index) => (
-            <TouchableOpacity key={item.id} style={styles.subjectCard}>
-              <View style={[styles.colorStrip, { backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][index % 5] }]} />
-              <View style={styles.cardContent}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.subjectName}>{item.name}</Text>
-                  <View style={styles.codeBadge}>
-                    <Text style={styles.codeText}>{item.code}</Text>
+          {subjects.map((item, index) => {
+            const syllabusCount = item.pivot?.syllabus?.length || 0;
+            const notesCount = item.pivot?.notes?.length || 0;
+            const completed = (item.pivot?.syllabus || []).filter((s: any) => s.status === 'completed').length;
+            const progress = syllabusCount > 0 ? Math.round((completed / syllabusCount) * 100) : 0;
+
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.subjectCard}
+                activeOpacity={0.7}
+                // Tapping opens the subject-detail screen with Syllabus +
+                // Materials tabs (parent mirror of the student app's flow).
+                onPress={() => router.push({
+                  pathname: '/(dashboard)/subject-detail',
+                  params: {
+                    subject: JSON.stringify(item),
+                    teacher_name: item.pivot?.teacher_name || '',
+                  },
+                })}
+              >
+                <View style={[styles.colorStrip, { backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][index % 5] }]} />
+                <View style={styles.cardContent}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.subjectName}>{item.name}</Text>
+                    <View style={styles.codeBadge}>
+                      <Text style={styles.codeText}>{item.code}</Text>
+                    </View>
                   </View>
+
+                  <View style={styles.cardFooter}>
+                    <View style={styles.metaInfo}>
+                      <Clock size={14} stroke="#64748b" />
+                      <Text style={styles.metaText}>{item.pivot?.periods_per_week || 0} Periods/Week</Text>
+                    </View>
+                    {item.pivot?.teacher_name ? (
+                      <View style={styles.metaInfo}>
+                        <GraduationCap size={14} stroke="#64748b" />
+                        <Text style={styles.metaText} numberOfLines={1}>{item.pivot.teacher_name}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  {/* Resource pill row — only renders when there's
+                      something to surface. Lesson plan intentionally
+                      omitted: it's a teacher-only planning document. */}
+                  {(syllabusCount > 0 || notesCount > 0) && (
+                    <View style={styles.pillRow}>
+                      {syllabusCount > 0 && (
+                        <View style={styles.pill}>
+                          <Text style={styles.pillText}>
+                            {syllabusCount} Chapter{syllabusCount === 1 ? '' : 's'}
+                            {progress > 0 ? ` · ${progress}%` : ''}
+                          </Text>
+                        </View>
+                      )}
+                      {notesCount > 0 && (
+                        <View style={[styles.pill, styles.pillAmber]}>
+                          <FileText size={10} stroke="#b45309" />
+                          <Text style={[styles.pillText, styles.pillAmberText]}>{notesCount} Material{notesCount === 1 ? '' : 's'}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                 </View>
-                
-                <View style={styles.cardFooter}>
-                  <View style={styles.metaInfo}>
-                    <Clock size={14} stroke="#64748b" />
-                    <Text style={styles.metaText}>{item.pivot?.periods_per_week || 0} Periods/Week</Text>
-                  </View>
-                  <View style={styles.metaInfo}>
-                    <GraduationCap size={14} stroke="#64748b" />
-                    <Text style={styles.metaText}>Curriculum v1.0</Text>
-                  </View>
+                <View style={styles.chevronCol}>
+                  <ChevronRight size={18} stroke="#cbd5e1" />
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            );
+          })}
 
           {subjects.length === 0 && (
             <View style={styles.emptyContainer}>
@@ -231,6 +301,20 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#eef2ff',
+  },
+  pillText: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#4f46e5', letterSpacing: 0.3 },
+  pillAmber: { backgroundColor: '#fef3c7' },
+  pillAmberText: { color: '#b45309' },
+  chevronCol: { justifyContent: 'center', paddingRight: 12 },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

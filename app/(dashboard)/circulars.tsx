@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Bell, Calendar, Info, Users, Clock, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Bell, Calendar, Info, Users, Clock, ChevronRight, Paperclip } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../utils/api';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
+import { apiCache } from '../../utils/cache';
 import BottomNav from '../../components/BottomNav';
 import { clearAuth } from '../../utils/auth';
 import { Alert } from 'react-native';
@@ -36,20 +37,23 @@ export default function Circulars() {
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
-  const fetchCirculars = async () => {
-    try {
-      const response = await api.get('/students/circulars');
-      setCirculars(response.data.data.data || []);
-      
-      // Mark as read after a short delay
-      setTimeout(async () => {
-        try {
-          await api.post('/students/notifications/read');
-        } catch (e) {
-          console.error('Failed to mark notifications as read', e);
-        }
-      }, 2000);
+  const fetchCirculars = async (force = false) => {
+    const cacheKey = 'circulars_list';
+    
+    // Check cache
+    const cached = force ? null : apiCache.get(cacheKey);
+    if (cached) {
+      setCirculars(cached);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
+    try {
+      const response: any = await api.get('/students/circulars');
+      const data = response.data || [];
+      setCirculars(data);
+      apiCache.set(cacheKey, data);
     } catch (error) {
       console.error('Failed to fetch circulars', error);
     } finally {
@@ -60,6 +64,23 @@ export default function Circulars() {
 
   useEffect(() => {
     fetchCirculars();
+    
+    // Mark as read once per screen visit IF there are unread items
+    const markAsRead = async () => {
+      const unreadCount = apiCache.get('unread_count', 300000); // 5 min TTL match
+      
+      // Only call if count is unknown or > 0
+      if (unreadCount === null || unreadCount > 0) {
+        try {
+          await api.post('/students/notifications/read');
+          // Update cache to 0 so the Bell Icon updates immediately when going back
+          apiCache.set('unread_count', 0);
+        } catch (e) {
+          // Silent fail
+        }
+      }
+    };
+    markAsRead();
   }, []);
 
   const onRefresh = () => {
@@ -143,7 +164,9 @@ export default function Circulars() {
                     id: item.id,
                     title: item.title,
                     content: item.description,
-                    date: item.published_at
+                    date: item.published_at,
+                    imageUrl: item.image_url,
+                    fileUrl: item.file_url,
                   }
                 })}
               >
@@ -165,7 +188,13 @@ export default function Circulars() {
                       <Clock size={12} stroke="#94a3b8" />
                       <Text style={styles.footerText}>{item.creator?.name || 'Admin'}</Text>
                     </View>
-                    <ChevronRight size={16} stroke="#cbd5e1" />
+                    
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      {(item.image_url || item.file_url) && (
+                        <Paperclip size={14} stroke="#6366f1" />
+                      )}
+                      <ChevronRight size={16} stroke="#cbd5e1" />
+                    </View>
                   </View>
                 </View>
               </TouchableOpacity>

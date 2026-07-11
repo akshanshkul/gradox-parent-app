@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  ActivityIndicator, 
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
   StatusBar,
-  Alert
+  Alert,
+  RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -23,21 +24,48 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
 import api from '../../utils/api';
 import Animated, { FadeInUp } from 'react-native-reanimated';
+import { apiCache } from '../../utils/cache';
 
 export default function Documents() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     fetchDocuments();
   }, []);
 
-  const fetchDocuments = async () => {
+  // Pull-to-refresh: drag the list down to force a fresh fetch (bypasses
+  // the local apiCache via fetchDocuments(true)).
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchDocuments(true);
+    setRefreshing(false);
+  };
+
+  const fetchDocuments = async (force = false) => {
+    const cacheKey = 'student_documents';
+
     try {
-      const response = await api.get('/students/profile');
-      const student = response.data.data.student;
-      setDocuments(student?.documents || []);
+      // 1. Check Cache
+      const cached = force ? null : apiCache.get(cacheKey);
+      if (cached) {
+        console.log('📦 [Cache Hit] student_documents');
+        setDocuments(cached);
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fetch Fresh — the api interceptor already unwraps Laravel's
+      // {success, data} envelope, so `response` is the raw payload object.
+      const response: any = await api.get('/students/profile');
+      const student = response?.student;
+      const docs = student?.documents || [];
+      setDocuments(docs);
+
+      // 3. Save Cache
+      apiCache.set(cacheKey, docs);
     } catch (error) {
       console.error('Failed to fetch documents', error);
       Alert.alert('Error', 'Unable to load documents. Please try again.');
@@ -99,7 +127,14 @@ export default function Documents() {
         </SafeAreaView>
       </LinearGradient>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollPadding}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4f46e5" colors={["#4f46e5"]} />
+        }
+      >
         <Animated.View entering={FadeInUp.delay(200)}>
           {documents.length > 0 ? (
             documents.map((doc, index) => (

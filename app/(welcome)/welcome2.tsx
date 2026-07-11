@@ -41,7 +41,7 @@ export default function WelcomeTwo() {
           >
             <View style={styles.iconCircle}>
               <Image 
-                source={require('../../assets/logo.png')} 
+                source={require('../../assets/logo/logo.png')} 
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -114,8 +114,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logo: {
-    width: 140,
-    height: 140,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
   },
   content: {
     marginBottom: 50,

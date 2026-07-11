@@ -1,28 +1,40 @@
 {
   "expo": {
-    "name": "student-app",
-    "slug": "gradox",
-    "scheme": "student-app",
-    "version": "1.0.0",
+    "name": "Gradox Parent",
+    "slug": "gradox-parent",
+    "scheme": "gradox-parent",
+    "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo/logo.png",
+    "notification": {
+      "icon": "./assets/logo/logo.png",
+      "color": "#4f46e5"
+    },
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tenextservicesllp.gradox.parent",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logo/logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.tenextservicesllp.gradox.parent",
+      "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -32,9 +44,12 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "40a3177e-3bc7-4993-8a80-ccbce2122234"
+        "projectId": "a64ce79f-4739-43b0-a0f4-0ac6a915ac6a"
       },
-      "router": {}
+      "router": {},
+      "isGlobalApp": true,
+      "schoolName": "Demo International School",
+      "schoolLogo": ""
     },
     "owner": "tenext-services-llp"
   }

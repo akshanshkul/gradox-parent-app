@@ -14,12 +14,16 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
 import api from '../../utils/api';
+import { saveParentToken } from '../../utils/auth';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 export default function VerifyOtp() {
-  const { schoolId, email } = useLocalSearchParams();
+  const { email } = useLocalSearchParams();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const isGlobalApp = process.env.EXPO_PUBLIC_IS_GLOBAL_APP === 'true';
+  const schoolName = isGlobalApp ? 'Gradox Parent' : (process.env.EXPO_PUBLIC_SCHOOL_NAME || 'Our School');
+  const schoolLogo = isGlobalApp ? null : process.env.EXPO_PUBLIC_SCHOOL_LOGO;
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const inputs = useRef<Array<TextInput | null>>([]);
@@ -51,22 +55,33 @@ export default function VerifyOtp() {
 
     setLoading(true);
     try {
-      const response = await api.post('/students/verify-otp', {
-        school_id: schoolId,
+      const response = await api.post('/parents/verify-otp', {
         email: email,
         otp: code
       });
       
-      const { reset_token } = response.data.data;
-      
-      Alert.alert('Success', 'Code verified successfully.');
+      const result: any = response;
+      const students = result?.students || [];
+
+      // Persist the short-lived parent session token. The backend requires it
+      // on every subsequent /parents/* call (login-as-student, students). The
+      // server-side cache expires it after 30 minutes; we keep it on the
+      // device until logout / next OTP cycle.
+      if (result?.parent_token) {
+        await saveParentToken(result.parent_token);
+      }
+
+      Alert.alert('Success', result?.message || 'Code verified successfully.');
+
+      // Navigate to student selection screen
       router.push({
-        pathname: '/reset-password',
-        params: { schoolId, email, resetToken: reset_token }
+        pathname: '/select-student',
+        params: { email: email as string, students: JSON.stringify(students) }
       });
     } catch (error: any) {
       console.error('OTP Verification failed', error);
-      Alert.alert('Verification Failed', error.response?.data?.message || 'Invalid or expired code.');
+      const errorMessage = error?.response?.data?.message || error?.message || 'Verification failed';
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -75,11 +90,12 @@ export default function VerifyOtp() {
   const handleResend = async () => {
     setResending(true);
     try {
-      // Re-use forgot-password endpoint for resend
-      // We need admissionId, but we didn't pass it. 
-      // Actually, we can just hit the same endpoint if we had the ID.
-      // For now, let's just show a simulated success or advise going back.
-      Alert.alert('Resend', 'Please go back and re-enter your details if you did not receive the code.');
+      await api.post('/parents/send-otp', {
+        email: email,
+      });
+      Alert.alert('Resent', 'A new OTP has been sent to your email.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to resend OTP. Please try again.');
     } finally {
       setResending(false);
     }

@@ -15,17 +15,15 @@ import {
   Keyboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Lock, User, ArrowLeft, Eye, EyeOff, Mail, School as SchoolIcon } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { ArrowLeft, Mail } from 'lucide-react-native';
 import api from '../../utils/api';
-import { saveToken, saveUser, getSchoolData } from '../../utils/auth';
+import { getSchoolData } from '../../utils/auth';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { APP_CONFIG } from '../../constants';
 
 export default function Login() {
-  const params = useLocalSearchParams();
-  
   const [cachedSchool, setCachedSchool] = useState<any>(null);
 
   useEffect(() => {
@@ -36,59 +34,34 @@ export default function Login() {
     fetchBranding();
   }, []);
 
-  // Use params from navigation, fallback to cached data, then to APP_CONFIG
-  const schoolId = params.schoolId || cachedSchool?.id || APP_CONFIG.defaultSchool.id;
-  const schoolSlug = params.schoolSlug || cachedSchool?.slug || APP_CONFIG.defaultSchool.slug;
-  const schoolName = params.schoolName || cachedSchool?.name || APP_CONFIG.defaultSchool.name;
-  const logoPath = params.logoPath || cachedSchool?.logo || APP_CONFIG.defaultSchool.logo;
+  const isGlobalApp = process.env.EXPO_PUBLIC_IS_GLOBAL_APP === 'true';
+  const schoolName = isGlobalApp ? 'Gradox Parent' : (cachedSchool?.name || APP_CONFIG.defaultSchool.name);
+  const schoolLogo = isGlobalApp ? null : (cachedSchool?.logo || APP_CONFIG.defaultSchool.logo);
   
-  const [admissionId, setAdmissionId] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async () => {
-    if (!admissionId || !email || !password) {
-      Alert.alert('Error', 'Please enter Admission ID, Email, and Password');
+  const handleSendOtp = async () => {
+    if (!email) {
+      Alert.alert('Error', 'Please enter your Email Address');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await api.post('/students/login', {
-        school_id: schoolId,
-        school_slug:schoolSlug,
-        admission_id: admissionId,
+      await api.post('/parents/send-otp', {
         email: email,
-        password: password,
       });
 
-      const { token, student, school } = response.data.data;
-      
-      await saveToken(token);
-      
-      // Store minimized user data - handle missing 'school' gracefully
-      await saveUser({ 
-        id: student.id,
-        name: student.name,
-        admission_number: student.admission_number,
-        email: student.email,
-        photo_path: student.photo_path,
-        school_id: school?.id || student.school_id || schoolId,
-        school_slug: school?.slug || schoolSlug,
-        school_name: school?.name || schoolName,
-        school_logo: school?.logo || logoPath,
-        current_session: school?.current_session || student.current_record?.session || '2024-25',
-        school_class_id: student.current_record?.school_class_id
+      Alert.alert('Success', 'OTP sent to your email');
+      router.push({
+        pathname: '/verify-otp',
+        params: { email: email }
       });
-      
-      Alert.alert('Success', 'Login Successful');
-      router.replace('/(dashboard)');
     } catch (error: any) {
-      console.error('Login failed', error);
-      Alert.alert('Login Failed', error.response?.data?.message || 'Invalid credentials or server error');
+      console.error('OTP request failed', error);
+      Alert.alert('Request Failed', error?.response?.data?.message || 'Email not found or server error');
     } finally {
       setLoading(false);
     }
@@ -114,15 +87,17 @@ export default function Login() {
             </TouchableOpacity>
             <View style={styles.headerContent}>
               <View style={styles.schoolHeaderInfo}>
-                <View style={styles.schoolLogoContainer}>
-                  {logoPath ? (
-                    <Image source={{ uri: logoPath as string }} style={styles.schoolLogo} />
-                  ) : (
-                    <SchoolIcon stroke="#fff" size={24} />
-                  )}
-                </View>
+                {!isGlobalApp && (
+                  <View style={styles.schoolLogoContainer}>
+                    <Image 
+                      source={schoolLogo ? { uri: schoolLogo as string } : require('../../assets/logo/logo.png')} 
+                      style={styles.schoolLogo} 
+                      resizeMode="contain"
+                    />
+                  </View>
+                )}
                 <View>
-                  <Text style={styles.welcomeText}>Welcome Back!</Text>
+                  <Text style={styles.welcomeText}>Welcome Parent!</Text>
                   <Text style={styles.schoolText}>{schoolName}</Text>
                 </View>
               </View>
@@ -140,28 +115,9 @@ export default function Login() {
           >
             <View style={styles.form}>
               <View style={styles.titleContainer}>
-                <Image 
-                  source={require('../../assets/logo.png')} 
-                  style={styles.formLogo}
-                  resizeMode="contain"
-                />
-                <Text style={styles.formTitle}>Student Login</Text>
+                <Text style={styles.formTitle}>Parent Login</Text>
               </View>
               
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Admission ID</Text>
-                <View style={styles.inputWrapper}>
-                  <User stroke="#64748b" size={20} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your ID"
-                    value={admissionId}
-                    onChangeText={setAdmissionId}
-                    autoCapitalize="none"
-                  />
-                </View>
-              </View>
-
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Email Address</Text>
                 <View style={styles.inputWrapper}>
@@ -177,42 +133,28 @@ export default function Login() {
                 </View>
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Password</Text>
-                <View style={styles.inputWrapper}>
-                  <Lock stroke="#64748b" size={20} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter password"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  We will send a 6-digit OTP to this email address for verification.
+                </Text>
+                {!isGlobalApp && schoolLogo && (
+                  <Image
+                    source={{ uri: schoolLogo }}
+                    style={styles.logo}
+                    resizeMode="contain"
                   />
-                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                    {showPassword ? <EyeOff stroke="#94a3b8" size={20} /> : <Eye stroke="#94a3b8" size={20} />}
-                  </TouchableOpacity>
-                </View>
+                )}
               </View>
 
               <TouchableOpacity 
-                style={styles.forgotPassword}
-                onPress={() => router.push({
-                  pathname: '/forgot-password',
-                  params: { schoolId, schoolName }
-                })}
-              >
-                <Text style={styles.forgotText}>Forgot Password?</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
                 style={styles.loginButton}
-                onPress={handleLogin}
+                onPress={handleSendOtp}
                 disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.loginButtonText}>Login</Text>
+                  <Text style={styles.loginButtonText}>Send OTP</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -241,7 +183,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   welcomeText: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     color: '#fff',
   },
@@ -271,6 +213,22 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  logo: {
+    width: 100,
+    height: 100,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  logoPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#f5f3ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
   formContainer: {
     flex: 1,
     backgroundColor: '#fff',
@@ -293,10 +251,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 30,
     gap: 12,
-  },
-  formLogo: {
-    width: 40,
-    height: 40,
   },
   inputGroup: {
     marginBottom: 20,
@@ -324,13 +278,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1e293b',
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
+  infoContainer: {
     marginBottom: 30,
+    paddingHorizontal: 4,
   },
-  forgotText: {
-    color: '#6366f1',
-    fontWeight: '600',
+  infoText: {
+    fontSize: 14,
+    color: '#64748b',
+    lineHeight: 20,
   },
   loginButton: {
     backgroundColor: '#4f46e5',

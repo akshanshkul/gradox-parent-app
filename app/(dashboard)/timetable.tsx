@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -11,13 +11,14 @@ import {
   Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { ArrowLeft, Calendar, Clock, User, MapPin } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../utils/api';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
 import BottomNav from '../../components/BottomNav';
 import { clearAuth } from '../../utils/auth';
+import { apiCache } from '../../utils/cache';
 import { Alert } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -30,14 +31,45 @@ export default function Timetable() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
 
-  const fetchTimetable = async () => {
+  const scrollToDay = (dayKey: string) => {
+    const dayIndex = DAYS.findIndex(d => d.toLowerCase() === dayKey);
+    if (dayIndex !== -1 && scrollRef.current) {
+      // item width is 60, gap is 15. Scroll to appropriate offset.
+      const offset = dayIndex * 75; 
+      scrollRef.current.scrollTo({ x: offset, animated: true });
+    }
+  };
+
+  const fetchTimetable = async (force = false) => {
+    const cacheKey = 'weekly_timetable';
+    
+    // Check cache
+    const cached = force ? null : apiCache.get(cacheKey);
+    if (cached) {
+      setSchedule(cached.schedule || {});
+      if (cached.current_day) {
+        const dayKey = cached.current_day.toLowerCase();
+        setCurrentDay(dayKey);
+        setTimeout(() => scrollToDay(dayKey), 100);
+      }
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
-      const response = await api.get('/students/timetable');
-      const data = response.data.data;
+      const response: any = await api.get('/students/timetable');
+      const data = response;
+      
       setSchedule(data.schedule || {});
+      apiCache.set(cacheKey, data);
+      
       if (data.current_day) {
-        setCurrentDay(data.current_day.toLowerCase());
+        const dayKey = data.current_day.toLowerCase();
+        setCurrentDay(dayKey);
+        setTimeout(() => scrollToDay(dayKey), 100);
       }
     } catch (error) {
       console.error('Failed to fetch timetable', error);
@@ -47,13 +79,16 @@ export default function Timetable() {
     }
   };
 
-  useEffect(() => {
-    fetchTimetable();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchTimetable();
+    }, [])
+  );
+
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchTimetable();
+    fetchTimetable(true);
   };
 
   const handleLogout = () => {
@@ -106,6 +141,7 @@ export default function Timetable() {
           </View>
           
           <ScrollView 
+            ref={scrollRef}
             horizontal 
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dayPicker}
@@ -159,10 +195,16 @@ export default function Timetable() {
                   <View style={styles.subjectCard}>
                     <Text style={styles.subjectName}>{item.subject?.name}</Text>
                     <View style={styles.detailsRow}>
-                      <View style={styles.detailItem}>
+                      <TouchableOpacity 
+                        style={styles.detailItem}
+                        onPress={() => router.push({
+                          pathname: '/(dashboard)/teacher-profile',
+                          params: { id: item.teacher?.id }
+                        })}
+                      >
                         <User size={12} stroke="#64748b" />
-                        <Text style={styles.detailText}>{item.teacher?.name || 'Faculty'}</Text>
-                      </View>
+                        <Text style={[styles.detailText, styles.teacherLinkText]}>{item.teacher?.name || 'Faculty'}</Text>
+                      </TouchableOpacity>
                       <View style={styles.detailItem}>
                         <MapPin size={12} stroke="#64748b" />
                         <Text style={styles.detailText}>{item.classroom?.name || 'Room A1'}</Text>
@@ -331,6 +373,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     fontFamily: 'Inter_500Medium',
+  },
+  teacherLinkText: {
+    color: '#6366f1',
+    textDecorationLine: 'underline',
   },
   emptyState: {
     alignItems: 'center',
